@@ -1,10 +1,8 @@
 import 'dart:convert';
 
 import 'package:ceremony/bottom_nav.dart';
-import 'package:ceremony/models/guest.dart';
 import 'package:ceremony/models/participant.dart';
 import 'package:ceremony/models/team.dart';
-import 'package:ceremony/models/ticket.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:http/http.dart' as http;
@@ -18,28 +16,17 @@ class Attendeedetails extends StatefulWidget {
 
 class _AttendeedetailsState extends State<Attendeedetails> {
   bool loading = true;
-  String type = '';
   List<Participant> participantList = [];
   List<int> guestCheckInList = [];
   List<int> guestCheckOutList = [];
 
   final String url = "http://192.168.1.130";
 
-  Future<bool> confirmCheckIn(
-      String personId, String ticketId, bool checkIn) async {
-    String uri = '';
-    if (type == 'Spectator') {
-      uri = '$url/api/checkin/spectators/$personId';
-    } else {
-      uri = '$url/api/checkin/tickets/$ticketId';
-    }
+  Future<bool> confirmCheckIn(int teamId) async {
+    final uri = '$url/api/checkin/tickets/$teamId';
     final Map<String, dynamic> body = {
       'guestIds': guestCheckInList,
     };
-
-    if (checkIn) {
-      body['attendeeId'] = personId;
-    }
     final response = await http.post(
       Uri.parse(uri),
       headers: {'Content-Type': 'application/json', 'x-api-key': 'nateg-2025'},
@@ -48,21 +35,11 @@ class _AttendeedetailsState extends State<Attendeedetails> {
     return (response.statusCode == 200);
   }
 
-  Future<bool> confirmCheckOut(
-      String personId, String ticketId, bool checkIn) async {
-    String uri = '';
-    if (type == 'Spectator') {
-      uri = '$url/api/checkin/spectators/$personId';
-    } else {
-      uri = '$url/api/checkin/tickets/$ticketId';
-    }
+  Future<bool> confirmCheckOut(int teamId) async {
+    final uri = '$url/api/checkin/tickets/$teamId';
     final Map<String, dynamic> body = {
       'guestIds': guestCheckOutList,
     };
-
-    if (!checkIn) {
-      body['attendeeId'] = personId;
-    }
     final response = await http.delete(
       Uri.parse(uri),
       headers: {'Content-Type': 'application/json', 'x-api-key': 'nateg-2025'},
@@ -71,20 +48,18 @@ class _AttendeedetailsState extends State<Attendeedetails> {
     return (response.statusCode == 200);
   }
 
-  bool currentStatus = false;
   bool firstRun = false;
   @override
   Widget build(BuildContext context) {
     var team = ModalRoute.of(context)!.settings.arguments as Team;
 
     if (!firstRun) {
-      currentStatus = team.numberOfCheckedIn == team.expectedSize;
+      setState(() {
+        loading = false;
+        participantList = team.participants ?? [];
+        firstRun = true;
+      });
     }
-    setState(() {
-      loading = false;
-      participantList = team.participants!;
-      firstRun = true;
-    });
     return PopScope(
       canPop: false,
       child: Scaffold(
@@ -150,8 +125,8 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                         decoration: BoxDecoration(
                                           color: team.numberOfCheckedIn ==
                                                   team.expectedSize
-                                              ? Colors.orange.shade100
-                                              : Colors.green.shade100,
+                                              ? Colors.green.shade100
+                                              : Colors.orange.shade100,
                                           borderRadius:
                                               BorderRadius.circular(20),
                                         ),
@@ -162,10 +137,10 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                               : 'Not Yet',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            color: team.numberOfCheckedIn !=
+                                            color: team.numberOfCheckedIn ==
                                                     team.expectedSize
-                                                ? Colors.orange.shade800
-                                                : Colors.green.shade800,
+                                                ? Colors.green.shade800
+                                                : Colors.orange.shade800,
                                           ),
                                         ),
                                       ),
@@ -176,9 +151,26 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                           team.expectedSize,
                                       onChanged: ((bool? newValue) {
                                         setState(() {
-                                          team.numberOfCheckedIn =
-                                              team.expectedSize;
-                                          
+                                          if (newValue!) {
+                                            for (var p in team.participants!) {
+                                              if (!p.checkedIn) {
+                                                p.checkedIn = true;
+                                                guestCheckInList.add(p.id);
+                                                guestCheckOutList.remove(p.id);
+                                              }
+                                            }
+                                            team.numberOfCheckedIn =
+                                                team.expectedSize;
+                                          } else {
+                                            for (var p in team.participants!) {
+                                              if (p.checkedIn) {
+                                                p.checkedIn = false;
+                                                guestCheckOutList.add(p.id);
+                                                guestCheckInList.remove(p.id);
+                                              }
+                                            }
+                                            team.numberOfCheckedIn = 0;
+                                          }
                                         });
                                       }))
                                 ],
@@ -283,17 +275,11 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                             ),
                             onPressed: () async {
                               bool res = true;
-                              if ((person.checkIn &&
-                                      person.checkIn != currentStatus) ||
-                                  guestCheckInList.isNotEmpty) {
-                                res = await confirmCheckIn(
-                                    person.id, ticket.id, person.checkIn);
+                              if (guestCheckInList.isNotEmpty) {
+                                res = await confirmCheckIn(team.id);
                               }
-                              if ((!person.checkIn &&
-                                      person.checkIn != currentStatus) ||
-                                  guestCheckOutList.isNotEmpty) {
-                                res = await confirmCheckOut(
-                                    person.id, ticket.id, person.checkIn);
+                              if (res && guestCheckOutList.isNotEmpty) {
+                                res = await confirmCheckOut(team.id);
                               }
                               if (res) {
                                 Navigator.pushReplacementNamed(
@@ -302,7 +288,7 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
                                       content: Text(
-                                          'An error occured, please try again.')),
+                                          'An error occurred, please try again.')),
                                 );
                               }
                             },
