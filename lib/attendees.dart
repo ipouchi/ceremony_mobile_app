@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'package:ceremony/models/attendee.dart';
-import 'package:ceremony/models/spectator.dart';
-import 'package:ceremony/models/ticket.dart';
+import 'package:ceremony/models/participant.dart';
+import 'package:ceremony/models/team.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:http/http.dart' as http;
 import 'package:ceremony/bottom_nav.dart';
@@ -16,50 +15,44 @@ class AttendeesPage extends StatefulWidget {
 
 class _AttendeesPageState extends State<AttendeesPage> {
   final TextEditingController _searchController = TextEditingController();
-  List<dynamic> filteredAttendees = [];
+  List<Team> filteredTeams = [];
 
   int total = 100;
-  List<Attendee> attendees = [];
-  List<Spectator> spectators = [];
-  List<Ticket> tickets = [];
-  List<dynamic> allAttendees = [];
+  List<Participant> participants = [];
+  List<Team> teams = [];
   bool loading = true;
 
-  final String url = "https://issatsoceremony.netlify.app";
+  final String url = "http://192.168.1.130:3000";
 
-  Future<void> getAttendees() async {
-    final response = await http.get(Uri.parse('$url/api/tickets'), headers: {
+  Future<void> getTeams() async {
+    final response = await http.get(Uri.parse('$url/api/teams'), headers: {
       'Content-Type': 'application/json',
-      'x-api-key': 'nateg-2025'
     });
     if (response.statusCode == 200) {
-      final Map<String, dynamic> rawJson = jsonDecode(response.body);
-      final List<dynamic> data = rawJson['data'];
-      tickets.clear();
-      allAttendees.clear();
-      for (dynamic i in data) {
-        tickets.add(Ticket.fromJson(i));
+      print(response.body);
+
+      final List<dynamic> rawJson = jsonDecode(response.body);
+      teams.clear();
+      for (dynamic i in rawJson) {
+        teams.add(Team.fromJson(i));
       }
-      for (var ticket in tickets) {
-        ticket.attendee != null
-            ? allAttendees.add(ticket.attendee!)
-            : allAttendees.add(ticket.spectator!);
-      }
+      print('teams: $teams');
+
       // Sort alphabetically (A-Z)
-      allAttendees.sort((a, b) =>
-          a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()));
+      teams
+          .sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       setState(() {
         loading = false;
-        filteredAttendees = List.from(allAttendees);
-        total = filteredAttendees.length;
+        filteredTeams = List.from(teams);
+        total = filteredTeams.length;
       });
     }
   }
 
   void _filterList(String query) {
     setState(() {
-      filteredAttendees = allAttendees.where((attendee) {
-        final name = attendee.fullName.toLowerCase();
+      filteredTeams = teams.where((team) {
+        final name = team.name.toLowerCase();
         final input = query.toLowerCase();
 
         // Search condition
@@ -68,22 +61,22 @@ class _AttendeesPageState extends State<AttendeesPage> {
         // Category filter condition
         bool matchesCategory = true;
         if (selectedFilter == 'Checked In') {
-          matchesCategory = attendee.checkIn == true;
+          matchesCategory = team.numberOfCheckedIn == team.expectedSize;
         } else if (selectedFilter == 'Not Yet') {
-          matchesCategory = attendee.checkIn == false;
+          matchesCategory = team.numberOfCheckedIn != team.expectedSize;
         }
 
         return matchesSearch && matchesCategory;
       }).toList();
 
-      total = filteredAttendees.length; // Update the count label
+      total = filteredTeams.length;
     });
   }
 
   @override
   void initState() {
     super.initState();
-    getAttendees();
+    getTeams();
   }
 
   @override
@@ -95,7 +88,6 @@ class _AttendeesPageState extends State<AttendeesPage> {
           appBar: AppBar(
             automaticallyImplyLeading: false,
             backgroundColor: const Color.fromARGB(255, 255, 255, 255),
-            //backgroundColor: const Color.fromARGB(255, 211, 238, 253),
             title: Center(
               child: Text(
                 "Attendees",
@@ -147,7 +139,7 @@ class _AttendeesPageState extends State<AttendeesPage> {
                             SizedBox(
                               width: 10.w,
                             ),
-                            Text("Showing $total attendees"),
+                            Text("Showing $total teams"),
                           ],
                         ),
                       ),
@@ -173,49 +165,42 @@ class _AttendeesPageState extends State<AttendeesPage> {
                               height: 120.h,
                               child: GestureDetector(
                                   onTap: () async {
-                                    final matchingTicket = tickets.firstWhere(
-                                      (t) =>
-                                          t.id ==
-                                          filteredAttendees[index].ticketId,
+                                    final matchingTeam = teams.firstWhere(
+                                      (t) => t.id == filteredTeams[index].id,
                                       orElse: () =>
-                                          tickets[0], // Fallback if not found
+                                          teams[0], // Fallback if not found
                                     );
                                     final result =
                                         await Navigator.pushReplacementNamed(
                                             context, '/attendeeDetails',
-                                            arguments: matchingTicket);
+                                            arguments: matchingTeam);
                                     if (result == true) {
                                       setState(() {
                                         loading = true;
                                       });
-                                      getAttendees();
+                                      getTeams();
                                     }
                                   },
                                   child: Card(
                                     elevation: 5,
                                     child: ListTile(
-                                      title: Text(
-                                          filteredAttendees[index].fullName,
+                                      title: Text(filteredTeams[index].name,
                                           style: TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 18.sp)),
                                       subtitle: Builder(
                                         builder: (context) {
                                           // 1. Find the ticket that matches the current filtered attendee
-                                          final currentAttendee =
-                                              filteredAttendees[index];
-                                          final matchingTicket =
-                                              tickets.firstWhere(
-                                            (t) =>
-                                                t.id ==
-                                                currentAttendee.ticketId,
-                                            orElse: () =>
-                                                tickets[0], // Fallback
+                                          final currentTeam =
+                                              filteredTeams[index];
+                                          final matchedTeam = teams.firstWhere(
+                                            (t) => t.id == currentTeam.id,
+                                            orElse: () => teams[0], // Fallback
                                           );
 
                                           // 2. Display the correct number of guests from THAT ticket
                                           return Text(
-                                            '${currentAttendee is Attendee ? "Graduated" : 'Spectator'}\nGuests: ${matchingTicket.guests.where((g) => g.checkIn).length}/${matchingTicket.guests.length}',
+                                            'Members: ${matchedTeam.participants!.where((g) => g.checkedIn).length}/${matchedTeam.participants!.length}',
                                             style: TextStyle(fontSize: 14.sp),
                                           );
                                         },
@@ -223,7 +208,10 @@ class _AttendeesPageState extends State<AttendeesPage> {
                                       trailing: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          filteredAttendees[index].checkIn
+                                          filteredTeams[index]
+                                                      .numberOfCheckedIn ==
+                                                  filteredTeams[index]
+                                                      .expectedSize
                                               ? Icon(Icons.check_circle_outline,
                                                   color: Colors.green)
                                               : Icon(

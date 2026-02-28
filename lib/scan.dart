@@ -175,7 +175,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
 
                               final code = result.barcodes.first.rawValue;
                               if (code != null && code != lastCode) {
-                                print(code);
                                 setState(() {
                                   isScanned = true;
                                   loading = true; // Shows your loading overlay

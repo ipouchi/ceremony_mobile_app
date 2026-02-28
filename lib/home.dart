@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:ceremony/bottom_nav.dart';
 import 'package:ceremony/models/attendee.dart';
+import 'package:ceremony/models/team.dart';
 import 'package:ceremony/models/ticket.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -16,29 +17,44 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int total = 100;
-  int pending = 30;
-  int checkedIn = 60;
-  int absent = 10;
+  int total = 0;
+  int pending = 0;
+  int checkedIn = 0;
+  int absent = 0;
+  List<Team> teams = [];
+  List<Team> checkedInTeams = [];
 
   bool loading = true;
 
-  final String url = "https://issatsoceremony.netlify.app";
+  final String url = "http://192.168.1.130:3000";
 
   Future<void> getStats() async {
-    final response = await http.get(Uri.parse('$url/api/checkin/stats'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': 'nateg-2025'
-        });
+    final response = await http.get(Uri.parse('$url/api/teams'), headers: {
+      'Content-Type': 'application/json',
+    });
     if (response.statusCode == 200) {
-      final Map<String, dynamic> rawJson = jsonDecode(response.body);
-      final data = rawJson['data'];
+      print(response.body);
+
+      final List<dynamic> rawJson = jsonDecode(response.body);
+      teams.clear();
+      for (dynamic i in rawJson) {
+        teams.add(Team.fromJson(i));
+      }
+      print('teams: $teams');
+
+      checkedInTeams = teams.where((team) {
+        bool matchesCategory = true;
+
+        matchesCategory = team.numberOfCheckedIn == team.expectedSize;
+
+        return matchesCategory;
+      }).toList();
+
       setState(() {
-        total = data["totalPeople"]!;
-        checkedIn = data["totalCheckedIn"]!;
-        pending = total - checkedIn;
         loading = false;
+        total = teams.length;
+        checkedIn = checkedInTeams.length;
+        pending = total - checkedIn;
       });
     }
   }
@@ -47,10 +63,11 @@ class _HomePageState extends State<HomePage> {
   List<dynamic> allAttendees = [];
 
   Future<void> getRecentCheckIns() async {
-    final response = await http.get(Uri.parse('$url/api/tickets'), headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': 'nateg-2025'
-    });
+    final response = await http.get(Uri.parse('$url/api/participants'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'nateg-2025'
+        });
     if (response.statusCode == 200) {
       final Map<String, dynamic> rawJson = jsonDecode(response.body);
       final List<dynamic> data = rawJson['data'];
@@ -101,13 +118,13 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  "January 24, 2026",
+                  "February 28, 2026",
                   style: TextStyle(
                       fontSize: 13.sp,
                       color: const Color.fromARGB(255, 94, 94, 94)),
                 ),
                 Text(
-                  'Graduation 2025',
+                  'Ideathon 4.0 2026',
                   style: GoogleFonts.robotoSlab(fontWeight: FontWeight.w600),
                 ),
               ],
@@ -330,7 +347,7 @@ class _HomePageState extends State<HomePage> {
                                 width: 5.w,
                               ),
                               Text(
-                                'Add ticket',
+                                'Scan team',
                                 style: TextStyle(
                                     color: Colors.white, fontSize: 17.sp),
                               ),

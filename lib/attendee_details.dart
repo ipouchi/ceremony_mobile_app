@@ -2,11 +2,12 @@ import 'dart:convert';
 
 import 'package:ceremony/bottom_nav.dart';
 import 'package:ceremony/models/guest.dart';
+import 'package:ceremony/models/participant.dart';
+import 'package:ceremony/models/team.dart';
 import 'package:ceremony/models/ticket.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 
 class Attendeedetails extends StatefulWidget {
   const Attendeedetails({super.key});
@@ -18,11 +19,11 @@ class Attendeedetails extends StatefulWidget {
 class _AttendeedetailsState extends State<Attendeedetails> {
   bool loading = true;
   String type = '';
-  List<Guest> guestList = [];
-  List<String> guestCheckInList = [];
-  List<String> guestCheckOutList = [];
+  List<Participant> participantList = [];
+  List<int> guestCheckInList = [];
+  List<int> guestCheckOutList = [];
 
-  final String url = "https://issatsoceremony.netlify.app";
+  final String url = "http://192.168.1.130";
 
   Future<bool> confirmCheckIn(
       String personId, String ticketId, bool checkIn) async {
@@ -70,37 +71,18 @@ class _AttendeedetailsState extends State<Attendeedetails> {
     return (response.statusCode == 200);
   }
 
-  Future<void> _makePhoneCall(String phoneNumber) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
-    if (await canLaunchUrl(launchUri)) {
-      await launchUrl(launchUri);
-    } else {
-      throw 'Could not launch $launchUri';
-    }
-  }
-
   bool currentStatus = false;
   bool firstRun = false;
   @override
   Widget build(BuildContext context) {
-    var ticket = ModalRoute.of(context)!.settings.arguments as Ticket;
-    dynamic person;
-    if (ticket.attendee != null) {
-      person = ticket.attendee!;
-      type = 'Attendee';
-    } else if (ticket.spectator != null) {
-      person = ticket.spectator!;
-      type = 'Spectator';
-    }
+    var team = ModalRoute.of(context)!.settings.arguments as Team;
+
     if (!firstRun) {
-      currentStatus = person.checkIn;
+      currentStatus = team.numberOfCheckedIn == team.expectedSize;
     }
     setState(() {
       loading = false;
-      guestList = ticket.guests;
+      participantList = team.participants!;
       firstRun = true;
     });
     return PopScope(
@@ -112,18 +94,11 @@ class _AttendeedetailsState extends State<Attendeedetails> {
           backgroundColor: const Color.fromARGB(255, 255, 255, 255),
           elevation: 0,
           centerTitle: true,
-          title: const Text('Attendee Details',
+          title: const Text('Team Details',
               style:
                   TextStyle(color: Colors.black, fontWeight: FontWeight.w600)),
           iconTheme: const IconThemeData(color: Colors.black),
           automaticallyImplyLeading: false,
-          /*leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              // Manual navigation via code STILL WORKS even if canPop is false
-              Navigator.of(context).pop();
-            },
-          ),*/
         ),
         body: SafeArea(
           child: loading
@@ -137,12 +112,11 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                     child: Column(
                       children: [
                         Text(
-                          person.fullName,
+                          team.name,
                           style: TextStyle(
                               fontSize: 32.sp, fontWeight: FontWeight.w800),
                         ),
                         SizedBox(height: 20.h),
-
                         Container(
                           padding: EdgeInsets.symmetric(
                               horizontal: 30.w, vertical: 20.h),
@@ -174,19 +148,22 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                         padding: EdgeInsets.symmetric(
                                             horizontal: 12.w, vertical: 4.h),
                                         decoration: BoxDecoration(
-                                          color: person.checkIn == false
+                                          color: team.numberOfCheckedIn ==
+                                                  team.expectedSize
                                               ? Colors.orange.shade100
                                               : Colors.green.shade100,
                                           borderRadius:
                                               BorderRadius.circular(20),
                                         ),
                                         child: Text(
-                                          person.checkIn
+                                          team.numberOfCheckedIn ==
+                                                  team.expectedSize
                                               ? 'Checked In'
                                               : 'Not Yet',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
-                                            color: !person.checkIn
+                                            color: team.numberOfCheckedIn !=
+                                                    team.expectedSize
                                                 ? Colors.orange.shade800
                                                 : Colors.green.shade800,
                                           ),
@@ -195,10 +172,13 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                     ],
                                   ),
                                   Checkbox(
-                                      value: person.checkIn,
+                                      value: team.numberOfCheckedIn ==
+                                          team.expectedSize,
                                       onChanged: ((bool? newValue) {
                                         setState(() {
-                                          person.checkIn = newValue;
+                                          team.numberOfCheckedIn =
+                                              team.expectedSize;
+                                          
                                         });
                                       }))
                                 ],
@@ -206,10 +186,8 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                             ],
                           ),
                         ),
-
                         SizedBox(height: 10.h),
-
-                        ticket.guests.isEmpty
+                        team.participants!.isEmpty
                             ? Text('')
                             : Column(
                                 children: [
@@ -217,7 +195,6 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                   _buildSectionHeader(Icons.people, 'Guests'),
                                   SizedBox(height: 10.h),
                                   Container(
-                                    //padding: EdgeInsets.symmetric(horizontal: 10),
                                     decoration: BoxDecoration(
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(12),
@@ -237,37 +214,52 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                                       shrinkWrap: true,
                                       physics:
                                           const NeverScrollableScrollPhysics(),
-                                      itemCount: ticket.guests.length,
+                                      itemCount: team.participants!.length,
                                       separatorBuilder: (context, index) =>
                                           const Divider(height: 1),
                                       itemBuilder: (context, index) {
                                         return SizedBox(
                                           height: 70.h,
                                           child: ListTile(
-                                              title: Text(
-                                                  guestList[index].fullName),
-                                              subtitle: Text(
-                                                  guestList[index].checkIn
-                                                      ? 'Checked In'
-                                                      : 'Not Yet'),
+                                              title: Text(team
+                                                  .participants![index]
+                                                  .fullName),
+                                              subtitle: Text(team
+                                                      .participants![index]
+                                                      .checkedIn
+                                                  ? 'Checked In'
+                                                  : 'Not Yet'),
                                               trailing: Checkbox(
-                                                  value:
-                                                      guestList[index].checkIn,
+                                                  value: team
+                                                      .participants![index]
+                                                      .checkedIn,
                                                   onChanged: (bool? newValue) {
                                                     if (newValue!) {
-                                                      guestCheckInList.add(
-                                                          guestList[index].id);
+                                                      guestCheckInList.add(team
+                                                          .participants![index]
+                                                          .id);
                                                       guestCheckOutList.remove(
-                                                          guestList[index].id);
+                                                          team
+                                                              .participants![
+                                                                  index]
+                                                              .id);
+                                                      team.numberOfCheckedIn++;
                                                     } else {
                                                       guestCheckInList.remove(
-                                                          guestList[index].id);
-                                                      guestCheckOutList.add(
-                                                          guestList[index].id);
+                                                          team
+                                                              .participants![
+                                                                  index]
+                                                              .id);
+                                                      guestCheckOutList.add(team
+                                                          .participants![index]
+                                                          .id);
+                                                      team.numberOfCheckedIn--;
                                                     }
+                                                    print(
+                                                        team.numberOfCheckedIn);
                                                     setState(() {
-                                                      guestList[index].checkIn =
-                                                          newValue;
+                                                      team.participants![index]
+                                                          .checkedIn = newValue;
                                                     });
                                                   })),
                                         );
@@ -279,60 +271,6 @@ class _AttendeedetailsState extends State<Attendeedetails> {
                         SizedBox(
                           height: 20.h,
                         ),
-                        // --- Ticket Details Section ---
-                        _buildSectionHeader(
-                            Icons.airplane_ticket, 'Ticket Details'),
-                        SizedBox(height: 10.h),
-                        Container(
-                          padding: const EdgeInsets.all(15),
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color.fromARGB(130, 158, 158, 158),
-                                spreadRadius: 1,
-                                blurRadius: 4,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _DetailRow(label: 'Type', value: type),
-                              //if (ticket.guests.isNotEmpty)
-                              Divider(height: 30.h),
-                              //if (ticket.guests.isNotEmpty)
-                              /*_DetailRow(
-                                    label: 'Number of guests',
-                                    value: ticket.guests.length.toString()),
-                              Divider(height: 30),*/
-                              _DetailRow(
-                                label: 'Phone number',
-                                value: person.phone,
-                                trailing: Container(
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(0xFF2474FF),
-                                  ),
-                                  child: IconButton(
-                                    color: Colors.white,
-                                    onPressed: () {
-                                      _makePhoneCall(person.phone);
-                                    },
-                                    icon: Icon(
-                                      Icons.phone,
-                                      size: 25,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
                         SizedBox(height: 20.h),
                         SizedBox(
                           height: 50.h,
@@ -391,32 +329,6 @@ class _AttendeedetailsState extends State<Attendeedetails> {
         SizedBox(width: 10.w),
         Text(title,
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18.sp)),
-      ],
-    );
-  }
-}
-
-// Helper widget for clean code
-class _DetailRow extends StatelessWidget {
-  final String label, value;
-  final Widget? trailing;
-  const _DetailRow({required this.label, required this.value, this.trailing});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(color: Colors.grey, fontSize: 14.sp)),
-            SizedBox(height: 4.h),
-            Text(value,
-                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w500)),
-          ],
-        ),
-        if (trailing != null) trailing!,
       ],
     );
   }
