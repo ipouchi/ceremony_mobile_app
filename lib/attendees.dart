@@ -200,7 +200,7 @@ class _AttendeesPageState extends State<AttendeesPage> {
 
                                           // 2. Display the correct number of guests from THAT ticket
                                           return Text(
-                                            'Members: ${matchedTeam.participants!.where((g) => g.checkedIn).length}/${matchedTeam.participants!.length}',
+                                            'Members: ${matchedTeam.participants?.where((g) => g.checkedIn).length ?? 0}/${matchedTeam.participants?.length ?? 0}',
                                             style: TextStyle(fontSize: 14.sp),
                                           );
                                         },

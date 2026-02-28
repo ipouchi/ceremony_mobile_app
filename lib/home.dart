@@ -1,9 +1,8 @@
 import 'dart:convert';
 
 import 'package:ceremony/bottom_nav.dart';
-import 'package:ceremony/models/attendee.dart';
+import 'package:ceremony/models/participant.dart';
 import 'package:ceremony/models/team.dart';
-import 'package:ceremony/models/ticket.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -56,52 +55,35 @@ class _HomePageState extends State<HomePage> {
         checkedIn = checkedInTeams.length;
         pending = total - checkedIn;
       });
+      getRecentCheckIns();
     }
   }
 
-  List<Ticket> tickets = [];
-  List<dynamic> allAttendees = [];
+  List<Participant> recentCheckIns = [];
 
   Future<void> getRecentCheckIns() async {
-    final response = await http.get(Uri.parse('$url/api/participants'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': 'nateg-2025'
-        });
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> rawJson = jsonDecode(response.body);
-      final List<dynamic> data = rawJson['data'];
-      tickets.clear();
-      allAttendees.clear();
-      for (dynamic i in data) {
-        tickets.add(Ticket.fromJson(i));
-      }
-
-      List<dynamic> checkedInPeople = [];
-      for (var ticket in tickets) {
-        dynamic person = ticket.attendee ?? ticket.spectator;
-        if (person != null && person.checkIn == true) {
-          checkedInPeople.add(person);
+    // Extract checked-in participants from the already-fetched teams
+    List<Participant> checkedInPeople = [];
+    for (var team in teams) {
+      if (team.participants != null) {
+        for (var p in team.participants!) {
+          if (p.checkedIn) {
+            checkedInPeople.add(p);
+          }
         }
       }
-      checkedInPeople.sort((a, b) {
-        DateTime dateA = DateTime.parse(a.updatedAt);
-        DateTime dateB = DateTime.parse(b.updatedAt);
-        return dateB.compareTo(dateA);
-      });
-
-      setState(() {
-        loading = false;
-        allAttendees = checkedInPeople.take(3).toList();
-      });
     }
+    checkedInPeople.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    setState(() {
+      recentCheckIns = checkedInPeople.take(3).toList();
+    });
   }
 
   @override
   void initState() {
     super.initState();
     getStats();
-    getRecentCheckIns();
   }
 
   @override
@@ -398,7 +380,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ],
                         ),
-                        child: allAttendees.isEmpty
+                        child: recentCheckIns.isEmpty
                             ? Center(
                                 child: Text(
                                   'No check in yet',
@@ -408,29 +390,24 @@ class _HomePageState extends State<HomePage> {
                             : ListView.separated(
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
-                                itemCount: allAttendees.length,
+                                itemCount: recentCheckIns.length,
                                 separatorBuilder: (context, index) =>
                                     const Divider(height: 1),
                                 itemBuilder: (context, index) {
-                                  dynamic person = allAttendees[index];
-                                  DateTime updateTime =
-                                      DateTime.parse(person.updatedAt);
+                                  final participant = recentCheckIns[index];
+                                  final updateTime = participant.updatedAt;
                                   return ListTile(
-                                    title: Text(person.fullName),
-                                    subtitle: Text(person is Attendee
-                                        ? 'Graduate'
-                                        : 'Spectator'),
+                                    title: Text(participant.fullName),
+                                    subtitle: Text(participant.fieldAndYear),
                                     trailing: Text(
-                                        '${updateTime.hour}:${updateTime.minute}'),
+                                        '${updateTime.hour.toString().padLeft(2, '0')}:${updateTime.minute.toString().padLeft(2, '0')}'),
                                     onTap: () {
-                                      final matchingTicket = tickets.firstWhere(
-                                        (t) =>
-                                            t.id ==
-                                            allAttendees[index].ticketId,
+                                      final matchingTeam = teams.firstWhere(
+                                        (t) => t.id == participant.teamId,
                                       );
                                       Navigator.pushReplacementNamed(
                                           context, '/attendeeDetails',
-                                          arguments: matchingTicket);
+                                          arguments: matchingTeam);
                                     },
                                   );
                                 },

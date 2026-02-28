@@ -1,13 +1,12 @@
 import 'dart:convert';
 
 import 'package:ceremony/bottom_nav.dart';
-import 'package:ceremony/models/ticket.dart';
+import 'package:ceremony/models/team.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http/http.dart' as http;
-import 'package:collection/collection.dart';
 
 class ScanPage extends StatefulWidget {
   const ScanPage({super.key});
@@ -57,61 +56,58 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     super.deactivate();
   }
 
-  final String url = "https://issatsoceremony.netlify.app";
-  late Ticket ticket;
+  final String url = "http://192.168.1.130:3000";
+  late Team team;
 
   bool loading = false;
   String lastCode = '';
 
-  Future<Ticket?> getTicketByQr(String qrCode) async {
-    final response = await http.get(Uri.parse('$url/api/tickets/qr/$qrCode'),
+  Future<Team?> getTeamByCode(String code) async {
+    final response = await http.get(Uri.parse('$url/api/teams/code/$code'),
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': 'nateg-2025'
         });
     if (response.statusCode == 200) {
       final Map<String, dynamic> rawJson = jsonDecode(response.body);
-
-      //print(rawJson);
-      final scannedTicket = Ticket.fromJson(rawJson['data']);
+      final scannedTeam = Team.fromJson(rawJson);
       setState(() {
-        ticket = scannedTicket;
+        team = scannedTeam;
         loading = false;
       });
-      return scannedTicket;
+      return scannedTeam;
     }
     return null;
   }
 
   bool manualSearchLoading = false;
-  Future<void> getTicketByFullName(String query) async {
+  Future<void> getTeamByName(String query) async {
     loading = true;
     manualSearchLoading = true;
-    final response = await http.get(Uri.parse('$url/api/tickets'), headers: {
+    final response = await http.get(Uri.parse('$url/api/teams'), headers: {
       'Content-Type': 'application/json',
-      'x-api-key': 'nateg-2025'
     });
     if (response.statusCode == 200) {
-      final Map<String, dynamic> rawJson = jsonDecode(response.body);
-      final List<dynamic> data = rawJson['data'];
-      List<Ticket> tickets = [];
-      tickets.clear();
-      for (dynamic i in data) {
-        tickets.add(Ticket.fromJson(i));
+      final List<dynamic> rawJson = jsonDecode(response.body);
+      List<Team> teams = [];
+      for (dynamic i in rawJson) {
+        teams.add(Team.fromJson(i));
       }
-      final matchingTicket = tickets.firstWhereOrNull(
-        (t) =>
-            t.spectator?.fullName.toLowerCase() == query.toLowerCase() ||
-            t.attendee?.fullName.toLowerCase() == query.toLowerCase(),
+
+      final matchingTeam = teams.cast<Team?>().firstWhere(
+        (t) => t!.name.toLowerCase() == query.toLowerCase() ||
+            (t.participants != null &&
+                t.participants!.any((p) =>
+                    p.fullName.toLowerCase() == query.toLowerCase())),
+        orElse: () => null,
       );
 
-      if (matchingTicket != null) {
+      if (matchingTeam != null) {
         Navigator.pushReplacementNamed(context, '/attendeeDetails',
-            arguments: matchingTicket);
+            arguments: matchingTeam);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('No ticket found for this name!'),
+            content: Text('No team found for this name!'),
             backgroundColor: Colors.red,
           ),
         );
@@ -177,22 +173,22 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                               if (code != null && code != lastCode) {
                                 setState(() {
                                   isScanned = true;
-                                  loading = true; // Shows your loading overlay
+                                  loading = true;
                                   lastCode = code;
                                 });
 
                                 // STOP the camera immediately
                                 await scannerController.stop();
 
-                                Ticket? chosenTicket =
-                                    await getTicketByQr(code);
+                                Team? scannedTeam =
+                                    await getTeamByCode(code);
 
-                                if (chosenTicket != null && mounted) {
+                                if (scannedTeam != null && mounted) {
                                   // Wait for user to come back from details
                                   Navigator.pushReplacementNamed(
                                     context,
                                     '/attendeeDetails',
-                                    arguments: chosenTicket,
+                                    arguments: scannedTeam,
                                   );
 
                                   // Resume scanning when they return
@@ -211,7 +207,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
-                                          'No ticket found for this qr code'),
+                                          'No team found for this QR code'),
                                     ),
                                   );
                                   scannerController.start();
@@ -275,14 +271,14 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                           ),
                           onPressed: () {
                             if (_manualSearchController.text.isNotEmpty) {
-                              getTicketByFullName(_manualSearchController.text);
+                              getTeamByName(_manualSearchController.text);
                             }
                           },
                           child: manualSearchLoading
                               ? Center(
                                   child: CircularProgressIndicator(),
                                 )
-                              : Text('Verify ticket',
+                              : Text('Search',
                                   style: TextStyle(
                                       fontSize: 16.sp, color: Colors.white)),
                         ),
